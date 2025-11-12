@@ -34,46 +34,59 @@ import com.example.lab_week_09.ui.theme.LAB_WEEK_09Theme
 import com.example.lab_week_09.ui.theme.OnBackgroundItemText
 import com.example.lab_week_09.ui.theme.OnBackgroundTitleText
 import com.example.lab_week_09.ui.theme.PrimaryTextButton
+import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
-//Previously we extend AppCompatActivity,
-//now we extend ComponentActivity
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        //Here, we use setContent instead of setContentView
         setContent {
-            //Here, we wrap our content with the theme
-            //You can check out the LAB_WEEK_09Theme inside Theme.kt
             LAB_WEEK_09Theme {
-                // A surface container using the 'background' color from the theme
                 Surface(
-                    //We use Modifier.fillMaxSize() to make the surface fill the whole screen
                     modifier = Modifier.fillMaxSize(),
-                    //We use MaterialTheme.colorScheme.background to get the background color
-                    //and set it as the color of the surface
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    App(
-                        navController = navController
-                    )
+                    App(navController = navController)
                 }
             }
         }
     }
 }
 
+@JsonClass(generateAdapter = true)
+data class Student(
+    val name: String
+)
+
 @Composable
-fun Home(
-    navigateFromHomeToResult: (String) -> Unit
-) {
-//Here, we create a mutable state list of Student
-//We use remember to make the list remember its value
-//This is so that the list won't be recreated when the composable recomposes
-    //We use mutableStateListOf to make the list mutable
-//This is so that we can add or remove items from the list
-//If you're still confused, this is basically the same concept as using
-//useState in React
+fun App(navController: NavHostController) {
+    NavHost(
+        navController = navController,
+        startDestination = "home"
+    ) {
+        composable("home") {
+            Home { jsonString ->
+                navController.navigate("resultContent/?listData=$jsonString")
+            }
+        }
+        composable(
+            "resultContent/?listData={listData}",
+            arguments = listOf(navArgument("listData") {
+                type = NavType.StringType
+            })
+        ) { backStackEntry ->
+            ResultContent(
+                listData = backStackEntry.arguments?.getString("listData").orEmpty()
+            )
+        }
+    }
+}
+
+@Composable
+fun Home(navigateFromHomeToResult: (String) -> Unit) {
     val listData = remember {
         mutableStateListOf(
             Student("Tanu"),
@@ -81,73 +94,63 @@ fun Home(
             Student("Tono")
         )
     }
-//Here, we create a mutable state of Student
-//This is so that we can get the value of the input field
     val inputField = remember { mutableStateOf(Student("")) }
-//We call the HomeContent composable
-//Here, we pass:
-//listData to show the list of items inside HomeContent
-//inputField to show the input field value inside HomeContent
-//A lambda function to update the value of the inputField
-//A lambda function to add the inputField to the listData
+
     HomeContent(
-        listData,
-        inputField.value,
-        { input -> inputField.value = inputField.value.copy(name = input) },
-        {
+        listData = listData,
+        inputField = inputField.value,
+        onInputValueChange = { input -> inputField.value = inputField.value.copy(name = input) },
+        onAddItemClick = {
             if (inputField.value.name.isNotBlank()) {
                 listData.add(inputField.value)
                 inputField.value = Student("")
             }
         },
-        { navigateFromHomeToResult(listData.toList().toString()) }
+        onNavigateClick = {
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val listType = Types.newParameterizedType(List::class.java, Student::class.java)
+            val jsonAdapter = moshi.adapter<List<Student>>(listType)
+            val jsonString = jsonAdapter.toJson(listData.toList())
+            navigateFromHomeToResult(jsonString)
+        }
     )
 }
 
-//Here, we create a composable function called HomeContent
-//HomeContent is used to display the content of the Home composable
 @Composable
 fun HomeContent(
     listData: SnapshotStateList<Student>,
     inputField: Student,
     onInputValueChange: (String) -> Unit,
-    onButtonClick: () -> Unit,
-    navigateFromHomeToResult: () -> Unit
+    onAddItemClick: () -> Unit,
+    onNavigateClick: () -> Unit
 ) {
-    LazyColumn {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         item {
             Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxSize(),
+                modifier = Modifier.padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 OnBackgroundTitleText(
-                    text = stringResource(
-                        id = R.string.enter_item
-                    )
+                    text = stringResource(id = R.string.enter_item)
                 )
                 TextField(
                     value = inputField.name,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text
-                    ),
-                    onValueChange = {
-                        onInputValueChange(it)
-                    }
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    onValueChange = onInputValueChange
                 )
                 Row {
                     PrimaryTextButton(
-                        text = stringResource(
-                            id = R.string.button_click
-                        )
+                        text = stringResource(id = R.string.button_click)
                     ) {
-                        onButtonClick()
+                        onAddItemClick()
                     }
                     PrimaryTextButton(
                         text = stringResource(id = R.string.button_navigate)
                     ) {
-                        navigateFromHomeToResult()
+                        onNavigateClick()
                     }
                 }
             }
@@ -165,80 +168,34 @@ fun HomeContent(
     }
 }
 
-//Here, we create a composable function called App
-//This will be the root composable of the app
-@Composable
-fun App(navController: NavHostController) {
-//Here, we use NavHost to create a navigation graph
-//We pass the navController as a parameter
-//We also set the startDestination to "home"
-//This means that the app will start with the Home composable
-    NavHost(
-        navController = navController,
-        startDestination = "home"
-    ) {
-//Here, we create a route called "home"
-//We pass the Home composable as a parameter
-//This means that when the app navigates to "home",
-//the Home composable will be displayed
-        composable("home") {
-//Here, we pass a lambda function that navigates to
-            "resultContent"
-//and pass the listData as a parameter
-            Home {
-                navController.navigate(
-                    "resultContent/?listData=$it"
-                )
-            }
-        }
-//Here, we create a route called "resultContent"
-//We pass the ResultContent composable as a parameter
-//This means that when the app navigates to "resultContent",
-        //the ResultContent composable will be displayed
-//You can also define arguments for the route
-//Here, we define a String argument called "listData"
-//We use navArgument to define the argument
-//We use NavType.StringType to define the type of the argument
-        composable(
-            "resultContent/?listData={listData}",
-            arguments = listOf(navArgument("listData") {
-                type = NavType.StringType
-            })
-        ) {
-//Here, we pass the value of the argument to the ResultContent composable
-            ResultContent(
-                it.arguments?.getString("listData").orEmpty()
-            )
-        }
-    }
-}
-
-//Here, we create a preview function of the Home composable
-//This function is specifically used to show a preview of the Home composable
-//This is only for development purpose
-@Preview(showBackground = true)
-@Composable
-fun PreviewHome() {
-    Home {}
-}
-
-//Declare a data class called Student
-data class Student(
-    val name: String
-)
-
-//Here, we create a composable function called ResultContent
-//ResultContent accepts a String parameter called listData from the Home composable
-//then displays the value of listData to the screen
 @Composable
 fun ResultContent(listData: String) {
-    Column(
+    val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    val listType = Types.newParameterizedType(List::class.java, Student::class.java)
+    val jsonAdapter = moshi.adapter<List<Student>>(listType)
+
+    val studentList = try {
+        if (listData.isNotEmpty()) jsonAdapter.fromJson(listData) ?: emptyList() else emptyList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    LazyColumn(
         modifier = Modifier
             .padding(vertical = 4.dp)
             .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-//Here, we call the OnBackgroundItemText UI Element
-        OnBackgroundItemText(text = listData)
+        items(studentList) { student ->
+            OnBackgroundItemText(text = student.name)
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewHome() {
+    LAB_WEEK_09Theme {
+        Home {}
     }
 }
